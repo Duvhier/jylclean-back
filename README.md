@@ -94,3 +94,38 @@ Backend de la aplicación **J&L Clean Co.**, un sistema de gestión de usuarios,
 ## 📄 Licencia
 
 MIT © 2025 - J\&L Clean Co.
+
+## Seguridad de Contraseña
+
+Las contraseñas deben cumplir con los siguientes requisitos:
+- Mínimo 8 caracteres
+- Al menos una letra mayúscula
+- Al menos una letra minúscula
+- Al menos un número
+- Al menos un carácter especial
+
+## Recuperación de Contraseña
+
+### Solicitar recuperación
+`POST /api/auth/forgot-password`
+
+Body:
+```
+{
+  "email": "usuario@ejemplo.com"
+}
+```
+Respuesta: `{ message: 'Correo de recuperación enviado.' }`
+
+### Restablecer contraseña
+`POST /api/auth/reset-password/:token`
+
+Body:
+```
+{
+  "password": "NuevaContraseñaSegura1!"
+}
+```
+Respuesta: `{ message: 'Contraseña restablecida correctamente.' }`
+
+El enlace de recuperación se enviará al correo registrado del usuario y será válido por 1 hora.

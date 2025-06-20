@@ -17,7 +17,14 @@ const userSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        required: true
+        required: true,
+        validate: {
+            validator: function(v) {
+                // Al menos 8 caracteres, una mayúscula, una minúscula, un número y un carácter especial
+                return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{8,}$/.test(v);
+            },
+            message: props => 'La contraseña debe tener mínimo 8 caracteres, una mayúscula, una minúscula, un número y un carácter especial.'
+        }
     },
     role: {
         type: String,
@@ -27,7 +34,9 @@ const userSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
-    }
+    },
+    resetPasswordToken: String,
+    resetPasswordExpires: Date
 });
 
 // Método para encriptar contraseña
