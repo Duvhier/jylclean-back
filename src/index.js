@@ -5,18 +5,37 @@ require('dotenv').config();
 
 const app = express();
 
-app.use(cors({
-    origin: [
-      process.env.FRONTEND_URL || 'http://localhost:3000',
-      'https://jylcleanco-front.vercel.app',
-      'http://localhost:5173' // Vite default port
-    ],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
-  }));
+// Reemplaza tu configuración actual de CORS con esta:
 
-  app.options('*', cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// CORS mejorado para producción
+app.use(cors({
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://jylcleanco-front.vercel.app',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+    
+    // Permitir requests sin origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Permitir todos en producción temporalmente
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+}));
+
+// Manejar preflight requests
+app.options('*', cors());
 
 // Validar que existan las variables de entorno requeridas
 const requiredEnvVars = ['MONGODB_URI'];
