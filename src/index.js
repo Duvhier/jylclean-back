@@ -5,12 +5,18 @@ require('dotenv').config();
 
 const app = express();
 
-// Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true
-}));
-app.use(express.json());
+    origin: [
+      process.env.FRONTEND_URL || 'http://localhost:3000',
+      'https://jylcleanco-front.vercel.app',
+      'http://localhost:5173' // Vite default port
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  }));
+
+  app.options('*', cors());
 
 // Validar que existan las variables de entorno requeridas
 const requiredEnvVars = ['MONGODB_URI'];
