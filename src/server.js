@@ -5,12 +5,26 @@ require('dotenv').config();
 
 const app = express();
 
-// Reemplaza tu configuración actual de CORS con esta:
-
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// CORS mejorado para producción
+// HEADERS MANUALES PARA VERCEL (Opción 1)
+app.use((req, res, next) => {
+  // CORS headers
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Origin', 'https://jylcleanco-front.vercel.app');
+  res.header('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.header('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
+  
+  // Security headers
+  res.header('X-Frame-Options', 'DENY');
+  res.header('X-Content-Type-Options', 'nosniff');
+  res.header('X-XSS-Protection', '1; mode=block');
+  
+  next();
+});
+
+// CORS adicional como respaldo
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
@@ -26,7 +40,7 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(null, true); // Permitir todos en producción temporalmente
+      callback(new Error('Origen no permitido por CORS'));
     }
   },
   credentials: true,
@@ -35,7 +49,9 @@ app.use(cors({
 }));
 
 // Manejar preflight requests
-app.options('*', cors());
+app.options('*', (req, res) => {
+  res.status(200).end();
+});
 
 // Validar que existan las variables de entorno requeridas
 const requiredEnvVars = ['MONGODB_URI'];
@@ -110,6 +126,7 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
+// Rutas
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/users', require('./routes/user.routes'));
 app.use('/api/products', require('./routes/product.routes'));
@@ -122,7 +139,8 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     message: 'Servidor funcionando correctamente',
     timestamp: new Date().toISOString(),
-    database: mongoose.connection.readyState === 1 ? 'Conectado' : 'Desconectado'
+    database: mongoose.connection.readyState === 1 ? 'Conectado' : 'Desconectado',
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
