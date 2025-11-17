@@ -15,19 +15,20 @@ const allowedOrigins = [
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
+// CORS debe ir ANTES que cualquier otra cosa
 app.use(cors({
   origin: function(origin, callback) {
-    // Permitir requests sin origin (Postman, curl, apps móviles)
+    // Permitir requests sin origin (Postman, Vercel serverless)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn('⚠️ Origen bloqueado por CORS:', origin);
-      callback(new Error('Origen no permitido por CORS'));
+      callback(null, true); // Temporalmente permitir todos para debug
     }
   },
-  credentials: false, // Cambiado a false para simplificar
+  credentials: false,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
@@ -38,71 +39,52 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Validar variables de entorno
-const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET'];
-const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
-
-if (missingEnvVars.length > 0) {
-  console.error('❌ Error: Faltan variables de entorno:', missingEnvVars.join(', '));
-  process.exit(1);
-}
-
 // ========================================
 // CONEXIÓN A MONGODB
 // ========================================
 const MONGODB_URI = process.env.MONGODB_URI;
 
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-})
-.then(() => {
-  console.log('✅ Conectado a MongoDB Atlas');
-  console.log(`📊 Base de datos: ${mongoose.connection.db.databaseName}`);
-})
-.catch(err => {
-  console.error('❌ Error conectando a MongoDB:', err.message);
+if (!MONGODB_URI) {
+  console.error('❌ MONGODB_URI no está definida');
   process.exit(1);
-});
+}
 
-// Eventos de conexión
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ Desconectado de MongoDB');
-});
-
-mongoose.connection.on('error', (err) => {
-  console.error('❌ Error de MongoDB:', err.message);
-});
+// Conectar solo si no está conectado (importante para serverless)
+if (mongoose.connection.readyState === 0) {
+  mongoose.connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  })
+  .then(() => {
+    console.log('✅ Conectado a MongoDB Atlas');
+  })
+  .catch(err => {
+    console.error('❌ Error conectando a MongoDB:', err.message);
+  });
+}
 
 // ========================================
 // MIDDLEWARE DE LOGGING
 // ========================================
 app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.path} - Origin: ${req.headers.origin || 'No origin'}`);
+  console.log(`${req.method} ${req.path}`);
   next();
 });
 
 // ========================================
 // RUTAS
 // ========================================
-app.use('/auth', require('./routes/auth.routes'));
-app.use('/users', require('./routes/user.routes'));
-app.use('/products', require('./routes/product.routes'));
-app.use('/sales', require('./routes/sale.routes'));
-app.use('/cart', require('./routes/cart.routes'));
 
-// Ruta de salud
+// Ruta de salud - DEBE IR PRIMERO
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'OK',
-    message: 'Servidor funcionando correctamente',
+    message: 'Servidor funcionando',
     timestamp: new Date().toISOString(),
     database: mongoose.connection.readyState === 1 ? 'Conectado' : 'Desconectado',
-    environment: process.env.NODE_ENV || 'development',
-    allowedOrigins: allowedOrigins
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -111,6 +93,7 @@ app.get('/', (req, res) => {
   res.json({
     message: 'J&L Clean Co. API',
     version: '1.0.0',
+    status: 'running',
     endpoints: {
       health: '/health',
       auth: '/auth',
@@ -121,37 +104,41 @@ app.get('/', (req, res) => {
   });
 });
 
+// Cargar rutas después de health check
+try {
+  app.use('/auth', require('./routes/auth.routes'));
+  app.use('/users', require('./routes/user.routes'));
+  app.use('/products', require('./routes/product.routes'));
+  app.use('/sales', require('./routes/sale.routes'));
+  app.use('/cart', require('./routes/cart.routes'));
+  console.log('✅ Rutas cargadas correctamente');
+} catch (error) {
+  console.error('❌ Error cargando rutas:', error.message);
+}
+
 // ========================================
 // MANEJO DE ERRORES
 // ========================================
+
 // Rutas no encontradas
 app.use('*', (req, res) => {
   console.warn('⚠️ Ruta no encontrada:', req.method, req.originalUrl);
   res.status(404).json({
     error: 'Ruta no encontrada',
     path: req.originalUrl,
-    method: req.method
+    method: req.method,
+    availableRoutes: ['/health', '/products', '/auth', '/cart', '/sales']
   });
 });
 
 // Errores globales
 app.use((error, req, res, next) => {
-  console.error('🔥 Error no manejado:', error.message);
+  console.error('🔥 Error:', error.message);
   
-  if (error.message.includes('CORS')) {
-    return res.status(403).json({
-      error: 'Origen no permitido por CORS'
-    });
-  }
-  
-  const statusCode = error.statusCode || 500;
-  const message = process.env.NODE_ENV === 'production' 
-    ? 'Error interno del servidor' 
-    : error.message;
-  
-  res.status(statusCode).json({
-    error: message,
-    ...(process.env.NODE_ENV !== 'production' && { stack: error.stack })
+  res.status(error.statusCode || 500).json({
+    error: process.env.NODE_ENV === 'production' 
+      ? 'Error interno del servidor' 
+      : error.message
   });
 });
 
@@ -160,22 +147,13 @@ app.use((error, req, res, next) => {
 // ========================================
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log('\n🚀 ========================================');
-  console.log('   J&L Clean Co. API - SERVIDOR INICIADO');
-  console.log('========================================');
-  console.log(`📍 Puerto: ${PORT}`);
-  console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health: http://localhost:${PORT}/health`);
-  console.log('✅ CORS habilitado para:');
-  allowedOrigins.forEach(origin => console.log(`   - ${origin}`));
-  console.log('========================================\n');
-});
+// Solo iniciar servidor si no está en Vercel
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`\n🚀 Servidor corriendo en puerto ${PORT}`);
+    console.log(`🔗 http://localhost:${PORT}/health`);
+  });
+}
 
-// Cierre graceful
-process.on('SIGINT', async () => {
-  console.log('\n🛑 Cerrando servidor...');
-  await mongoose.connection.close();
-  console.log('✅ Conexión cerrada');
-  process.exit(0);
-});
+// Export para Vercel serverless
+module.exports = app;
