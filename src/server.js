@@ -5,53 +5,56 @@ require('dotenv').config();
 
 const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// HEADERS MANUALES PARA VERCEL (Opción 1)
+// MIDDLEWARE CORS MEJORADO - DEBE IR PRIMERO
 app.use((req, res, next) => {
-  // CORS headers
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Origin', 'https://jylcleanco-front.vercel.app');
-  res.header('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  res.header('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
+  const allowedOrigins = [
+    'https://jylcleanco-front.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:5173'
+  ];
   
-  // Security headers
-  res.header('X-Frame-Options', 'DENY');
-  res.header('X-Content-Type-Options', 'nosniff');
-  res.header('X-XSS-Protection', '1; mode=block');
+  const origin = req.headers.origin;
+  
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-CSRF-Token');
+  
+  // Manejar preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
   
   next();
 });
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // CORS adicional como respaldo
 app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:5173',
       'https://jylcleanco-front.vercel.app',
+      'http://localhost:3000', 
+      'http://localhost:5173',
       process.env.FRONTEND_URL
     ].filter(Boolean);
     
-    // Permitir requests sin origin (mobile apps, Postman, etc.)
+    // Permitir requests sin origin
     if (!origin) return callback(null, true);
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Origen no permitido por CORS'));
     }
   },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+  credentials: true
 }));
-
-// Manejar preflight requests
-app.options('*', (req, res) => {
-  res.status(200).end();
-});
 
 // Validar que existan las variables de entorno requeridas
 const requiredEnvVars = ['MONGODB_URI'];
@@ -67,19 +70,16 @@ if (missingEnvVars.length > 0) {
 // Conexión a MongoDB Atlas
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// Opciones mejoradas para la conexión de MongoDB
 const mongooseOptions = {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000, // Timeout después de 5 segundos
-  socketTimeoutMS: 45000, // Cierra sockets después de 45 segundos de inactividad
+  serverSelectionTimeoutMS: 5000,
+  socketTimeoutMS: 45000,
 };
 
 mongoose.connect(MONGODB_URI, mongooseOptions)
 .then(() => {
   console.log('✅ Conectado a MongoDB Atlas');
-  
-  // Obtener información de la conexión (sin mostrar credenciales)
   const connection = mongoose.connection;
   const dbName = connection.db.databaseName;
   const host = connection.host;
@@ -89,7 +89,6 @@ mongoose.connect(MONGODB_URI, mongooseOptions)
 .catch(err => {
   console.error('❌ Error conectando a MongoDB Atlas:', err.message);
   
-  // Dar información útil sin exponer detalles sensibles
   if (err.name === 'MongoNetworkError') {
     console.log('💡 Verifica tu conexión a internet y la URI de MongoDB');
   } else if (err.name === 'MongoServerSelectionError') {
@@ -166,6 +165,13 @@ app.use('*', (req, res) => {
 app.use((error, req, res, next) => {
   console.error('🔥 Error no manejado:', error);
   
+  // Manejar errores CORS
+  if (error.message.includes('CORS')) {
+    return res.status(403).json({
+      error: 'Origen no permitido'
+    });
+  }
+  
   // No exponer detalles del error en producción
   if (process.env.NODE_ENV === 'production') {
     return res.status(500).json({
@@ -186,5 +192,9 @@ app.listen(PORT, () => {
   console.log(`📍 Puerto: ${PORT}`);
   console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
+  console.log('✅ CORS configurado para:');
+  console.log('   - https://jylcleanco-front.vercel.app');
+  console.log('   - http://localhost:3000');
+  console.log('   - http://localhost:5173');
   console.log('──────────────────────────────────────────');
 });
