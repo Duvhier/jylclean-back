@@ -57,6 +57,32 @@ const connectDB = async () => {
   }
 };
 
+// En index.js, después de conectar DB en cada ruta:
+app.use('/products', async (req, res, next) => {
+    await connectDB();
+    console.log('📥 Products route hit:', req.method, req.url);
+    next();
+  }, require('./routes/product.routes'));
+  
+  app.use('/cart', async (req, res, next) => {
+    await connectDB();
+    console.log('📥 Cart route hit:', req.method, req.url);
+    next();
+  }, require('./routes/cart.routes'));
+  
+  // En product.routes.js, agrega logs:
+  router.get('/', async (req, res) => {
+      try {
+          console.log('🛍️ Fetching all products');
+          const products = await Product.find();
+          console.log(`✅ Found ${products.length} products`);
+          res.json(products);
+      } catch (error) {
+          console.error('❌ Error getting products:', error);
+          res.status(500).json({ message: 'Error getting products' });
+      }
+  });
+
 // ========================================
 // RUTAS
 // ========================================
