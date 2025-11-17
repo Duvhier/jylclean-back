@@ -1,4 +1,4 @@
-// index.js - Punto de entrada para Vercel
+// index.js - Versión simple para debug
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -6,172 +6,153 @@ require('dotenv').config();
 
 const app = express();
 
-// ========================================
-// CONFIGURACIÓN CORS
-// ========================================
-const allowedOrigins = [
-  'https://jylcleanco-front.vercel.app',
-  'http://localhost:3000',
-  'http://localhost:5173'
-];
-
+// CORS
 app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Permitir temporalmente para debug
-    }
-  },
-  credentials: false,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
+  origin: '*', // Permitir todos temporalmente
+  credentials: false
 }));
 
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 // ========================================
-// CONEXIÓN A MONGODB
-// ========================================
-let isConnected = false;
-
-const connectDB = async () => {
-  if (isConnected) {
-    console.log('✅ MongoDB ya conectado');
-    return;
-  }
-
-  try {
-    const db = await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-    });
-    
-    isConnected = db.connections[0].readyState === 1;
-    console.log('✅ MongoDB conectado');
-  } catch (error) {
-    console.error('❌ Error MongoDB:', error.message);
-    throw error;
-  }
-};
-
-// En index.js, después de conectar DB en cada ruta:
-app.use('/products', async (req, res, next) => {
-    await connectDB();
-    console.log('📥 Products route hit:', req.method, req.url);
-    next();
-  }, require('./routes/product.routes'));
-  
-  app.use('/cart', async (req, res, next) => {
-    await connectDB();
-    console.log('📥 Cart route hit:', req.method, req.url);
-    next();
-  }, require('./routes/cart.routes'));
-  
-  // En product.routes.js, agrega logs:
-  router.get('/', async (req, res) => {
-      try {
-          console.log('🛍️ Fetching all products');
-          const products = await Product.find();
-          console.log(`✅ Found ${products.length} products`);
-          res.json(products);
-      } catch (error) {
-          console.error('❌ Error getting products:', error);
-          res.status(500).json({ message: 'Error getting products' });
-      }
-  });
-
-// ========================================
-// RUTAS
+// RUTAS DE DEBUG
 // ========================================
 
-// Ruta raíz
 app.get('/', (req, res) => {
   res.json({
     message: 'J&L Clean Co. API',
-    version: '1.0.0',
     status: 'online',
     timestamp: new Date().toISOString(),
-    endpoints: {
-      health: '/health',
-      products: '/products',
-      auth: '/auth',
-      cart: '/cart'
-    }
+    version: '1.0.0'
   });
 });
 
-// Health check
-app.get('/health', async (req, res) => {
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'Servidor funcionando',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Ruta de debug para ver qué archivos existen
+app.get('/debug', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  
   try {
-    await connectDB();
+    // Buscar en src/ o en raíz
+    const routesPath = fs.existsSync(path.join(__dirname, 'src', 'routes')) 
+      ? path.join(__dirname, 'src', 'routes')
+      : path.join(__dirname, 'routes');
+    
+    const modelsPath = fs.existsSync(path.join(__dirname, 'src', 'models'))
+      ? path.join(__dirname, 'src', 'models')
+      : path.join(__dirname, 'models');
+    
+    const middlewarePath = fs.existsSync(path.join(__dirname, 'src', 'middleware'))
+      ? path.join(__dirname, 'src', 'middleware')
+      : path.join(__dirname, 'middleware');
+    
+    const routesExist = fs.existsSync(routesPath);
+    const modelsExist = fs.existsSync(modelsPath);
+    const middlewareExist = fs.existsSync(middlewarePath);
+    
+    const routeFiles = routesExist ? fs.readdirSync(routesPath) : [];
+    const modelFiles = modelsExist ? fs.readdirSync(modelsPath) : [];
+    const middlewareFiles = middlewareExist ? fs.readdirSync(middlewarePath) : [];
+    
     res.json({
-      status: 'OK',
-      message: 'Servidor funcionando',
-      timestamp: new Date().toISOString(),
-      database: mongoose.connection.readyState === 1 ? 'Conectado' : 'Desconectado',
-      mongodb: {
-        state: mongoose.connection.readyState,
-        host: mongoose.connection.host || 'N/A'
-      }
+      message: 'Debug Info',
+      directories: {
+        routes: {
+          exists: routesExist,
+          path: routesPath,
+          files: routeFiles
+        },
+        models: {
+          exists: modelsExist,
+          path: modelsPath,
+          files: modelFiles
+        },
+        middleware: {
+          exists: middlewareExist,
+          path: middlewarePath,
+          files: middlewareFiles
+        }
+      },
+      env: {
+        NODE_ENV: process.env.NODE_ENV,
+        HAS_MONGODB_URI: !!process.env.MONGODB_URI,
+        HAS_JWT_SECRET: !!process.env.JWT_SECRET
+      },
+      __dirname: __dirname,
+      cwd: process.cwd()
     });
   } catch (error) {
     res.status(500).json({
-      status: 'ERROR',
-      message: error.message
+      error: error.message,
+      stack: error.stack
     });
   }
 });
 
-// Cargar rutas de la API
-app.use('/products', async (req, res, next) => {
-  await connectDB();
-  next();
-}, require('./routes/product.routes'));
-
-app.use('/auth', async (req, res, next) => {
-  await connectDB();
-  next();
-}, require('./routes/auth.routes'));
-
-app.use('/cart', async (req, res, next) => {
-  await connectDB();
-  next();
-}, require('./routes/cart.routes'));
-
-app.use('/sales', async (req, res, next) => {
-  await connectDB();
-  next();
-}, require('./routes/sale.routes'));
-
-app.use('/users', async (req, res, next) => {
-  await connectDB();
-  next();
-}, require('./routes/user.routes'));
-
 // ========================================
-// MANEJO DE ERRORES
+// CARGAR RUTAS (con protección)
 // ========================================
 
-// 404
+const fs = require('fs');
+const path = require('path');
+
+// Buscar en src/routes si existe, sino en routes
+const routesPath = fs.existsSync(path.join(__dirname, 'src', 'routes')) 
+  ? path.join(__dirname, 'src', 'routes')
+  : path.join(__dirname, 'routes');
+
+if (fs.existsSync(routesPath)) {
+  console.log('✅ Routes directory found at:', routesPath);
+  
+  // Determinar el prefijo correcto
+  const routePrefix = routesPath.includes('src') ? './src/routes/' : './routes/';
+  
+  // Intentar cargar cada ruta individualmente
+  const routeFiles = [
+    { path: `${routePrefix}product.routes`, mount: '/products' },
+    { path: `${routePrefix}auth.routes`, mount: '/auth' },
+    { path: `${routePrefix}cart.routes`, mount: '/cart' },
+    { path: `${routePrefix}sale.routes`, mount: '/sales' },
+    { path: `${routePrefix}user.routes`, mount: '/users' }
+  ];
+  
+  routeFiles.forEach(({ path: routePath, mount }) => {
+    try {
+      const route = require(routePath);
+      app.use(mount, route);
+      console.log(`✅ Loaded route: ${mount}`);
+    } catch (error) {
+      console.error(`❌ Failed to load ${mount}:`, error.message);
+    }
+  });
+} else {
+  console.error('❌ Routes directory not found at:', routesPath);
+}
+
+// 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     error: 'Ruta no encontrada',
     path: req.originalUrl,
-    method: req.method
+    availableEndpoints: ['/', '/health', '/debug']
   });
 });
 
 // Error handler
 app.use((error, req, res, next) => {
-  console.error('Error:', error.message);
+  console.error('Error:', error);
   res.status(500).json({
-    error: 'Error interno del servidor',
-    message: process.env.NODE_ENV === 'development' ? error.message : undefined
+    error: 'Error interno',
+    message: error.message
   });
 });
 
-// Export para Vercel
 module.exports = app;
