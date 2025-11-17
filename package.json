@@ -4,7 +4,7 @@
   "description": "Backend para J&L Clean Co",
   "main": "index.js",
   "engines": {
-    "node": "18.x"
+    "node": "22.x"
   },
   "scripts": {
     "start": "node index.js",
