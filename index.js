@@ -1,4 +1,3 @@
-// index.js - Versión simple para debug
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -6,153 +5,155 @@ require('dotenv').config();
 
 const app = express();
 
-// CORS
+// ========================================
+// CONFIGURACIÓN CORS SIMPLIFICADA
+// ========================================
+const allowedOrigins = [
+  'https://jylcleanco-front.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
+// CORS debe ir ANTES que cualquier otra cosa
 app.use(cors({
-  origin: '*', // Permitir todos temporalmente
-  credentials: false
+  origin: function(origin, callback) {
+    // Permitir requests sin origin (Postman, Vercel serverless)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn('⚠️ Origen bloqueado por CORS:', origin);
+      callback(null, true); // Temporalmente permitir todos para debug
+    }
+  },
+  credentials: false,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
 
+// ========================================
+// MIDDLEWARE BÁSICO
+// ========================================
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // ========================================
-// RUTAS DE DEBUG
+// CONEXIÓN A MONGODB
+// ========================================
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  console.error('❌ MONGODB_URI no está definida');
+  process.exit(1);
+}
+
+// Conectar solo si no está conectado (importante para serverless)
+if (mongoose.connection.readyState === 0) {
+  mongoose.connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+  })
+  .then(() => {
+    console.log('✅ Conectado a MongoDB Atlas');
+  })
+  .catch(err => {
+    console.error('❌ Error conectando a MongoDB:', err.message);
+  });
+}
+
+// ========================================
+// MIDDLEWARE DE LOGGING
+// ========================================
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
+
+// ========================================
+// RUTAS
 // ========================================
 
+// Ruta de salud - DEBE IR PRIMERO
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'OK',
+    message: 'Servidor funcionando',
+    timestamp: new Date().toISOString(),
+    database: mongoose.connection.readyState === 1 ? 'Conectado' : 'Desconectado',
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Ruta principal
 app.get('/', (req, res) => {
   res.json({
     message: 'J&L Clean Co. API',
-    status: 'online',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
-});
-
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'Servidor funcionando',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Ruta de debug para ver qué archivos existen
-app.get('/debug', (req, res) => {
-  const fs = require('fs');
-  const path = require('path');
-  
-  try {
-    // Buscar en src/ o en raíz
-    const routesPath = fs.existsSync(path.join(__dirname, 'src', 'routes')) 
-      ? path.join(__dirname, 'src', 'routes')
-      : path.join(__dirname, 'routes');
-    
-    const modelsPath = fs.existsSync(path.join(__dirname, 'src', 'models'))
-      ? path.join(__dirname, 'src', 'models')
-      : path.join(__dirname, 'models');
-    
-    const middlewarePath = fs.existsSync(path.join(__dirname, 'src', 'middleware'))
-      ? path.join(__dirname, 'src', 'middleware')
-      : path.join(__dirname, 'middleware');
-    
-    const routesExist = fs.existsSync(routesPath);
-    const modelsExist = fs.existsSync(modelsPath);
-    const middlewareExist = fs.existsSync(middlewarePath);
-    
-    const routeFiles = routesExist ? fs.readdirSync(routesPath) : [];
-    const modelFiles = modelsExist ? fs.readdirSync(modelsPath) : [];
-    const middlewareFiles = middlewareExist ? fs.readdirSync(middlewarePath) : [];
-    
-    res.json({
-      message: 'Debug Info',
-      directories: {
-        routes: {
-          exists: routesExist,
-          path: routesPath,
-          files: routeFiles
-        },
-        models: {
-          exists: modelsExist,
-          path: modelsPath,
-          files: modelFiles
-        },
-        middleware: {
-          exists: middlewareExist,
-          path: middlewarePath,
-          files: middlewareFiles
-        }
-      },
-      env: {
-        NODE_ENV: process.env.NODE_ENV,
-        HAS_MONGODB_URI: !!process.env.MONGODB_URI,
-        HAS_JWT_SECRET: !!process.env.JWT_SECRET
-      },
-      __dirname: __dirname,
-      cwd: process.cwd()
-    });
-  } catch (error) {
-    res.status(500).json({
-      error: error.message,
-      stack: error.stack
-    });
-  }
-});
-
-// ========================================
-// CARGAR RUTAS (con protección)
-// ========================================
-
-const fs = require('fs');
-const path = require('path');
-
-// Buscar en src/routes si existe, sino en routes
-const routesPath = fs.existsSync(path.join(__dirname, 'src', 'routes')) 
-  ? path.join(__dirname, 'src', 'routes')
-  : path.join(__dirname, 'routes');
-
-if (fs.existsSync(routesPath)) {
-  console.log('✅ Routes directory found at:', routesPath);
-  
-  // Determinar el prefijo correcto
-  const routePrefix = routesPath.includes('src') ? './src/routes/' : './routes/';
-  
-  // Intentar cargar cada ruta individualmente
-  const routeFiles = [
-    { path: `${routePrefix}product.routes`, mount: '/products' },
-    { path: `${routePrefix}auth.routes`, mount: '/auth' },
-    { path: `${routePrefix}cart.routes`, mount: '/cart' },
-    { path: `${routePrefix}sale.routes`, mount: '/sales' },
-    { path: `${routePrefix}user.routes`, mount: '/users' }
-  ];
-  
-  routeFiles.forEach(({ path: routePath, mount }) => {
-    try {
-      const route = require(routePath);
-      app.use(mount, route);
-      console.log(`✅ Loaded route: ${mount}`);
-    } catch (error) {
-      console.error(`❌ Failed to load ${mount}:`, error.message);
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      auth: '/auth',
+      products: '/products',
+      cart: '/cart',
+      sales: '/sales'
     }
   });
-} else {
-  console.error('❌ Routes directory not found at:', routesPath);
+});
+
+// Cargar rutas después de health check
+try {
+  app.use('/auth', require('./routes/auth.routes'));
+  app.use('/users', require('./routes/user.routes'));
+  app.use('/products', require('./routes/product.routes'));
+  app.use('/sales', require('./routes/sale.routes'));
+  app.use('/cart', require('./routes/cart.routes'));
+  console.log('✅ Rutas cargadas correctamente');
+} catch (error) {
+  console.error('❌ Error cargando rutas:', error.message);
 }
 
-// 404 handler
+// ========================================
+// MANEJO DE ERRORES
+// ========================================
+
+// Rutas no encontradas
 app.use('*', (req, res) => {
+  console.warn('⚠️ Ruta no encontrada:', req.method, req.originalUrl);
   res.status(404).json({
     error: 'Ruta no encontrada',
     path: req.originalUrl,
-    availableEndpoints: ['/', '/health', '/debug']
+    method: req.method,
+    availableRoutes: ['/health', '/products', '/auth', '/cart', '/sales']
   });
 });
 
-// Error handler
+// Errores globales
 app.use((error, req, res, next) => {
-  console.error('Error:', error);
-  res.status(500).json({
-    error: 'Error interno',
-    message: error.message
+  console.error('🔥 Error:', error.message);
+  
+  res.status(error.statusCode || 500).json({
+    error: process.env.NODE_ENV === 'production' 
+      ? 'Error interno del servidor' 
+      : error.message
   });
 });
 
+// ========================================
+// INICIO DEL SERVIDOR
+// ========================================
+const PORT = process.env.PORT || 5000;
+
+// Solo iniciar servidor si no está en Vercel
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`\n🚀 Servidor corriendo en puerto ${PORT}`);
+    console.log(`🔗 http://localhost:${PORT}/health`);
+  });
+}
+
+// Export para Vercel serverless
 module.exports = app;
