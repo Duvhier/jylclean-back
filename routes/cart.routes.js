@@ -1,9 +1,9 @@
 // src/routes/cart.routes.js - ARCHIVO CORREGIDO
 const express = require('express');
 const router = express.Router();
-const Cart = require('../models/cart.model');
-const Product = require('../models/product.model');
-const { auth } = require('../middleware/auth.middleware');
+const Cart = require('../src/models/cart.model');
+const Product = require('../src/models/product.model');
+const { auth } = require('../src/middleware/auth.middleware');
 
 // Obtener carrito del usuario
 router.get('/', auth, async (req, res) => {

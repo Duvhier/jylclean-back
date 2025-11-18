@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const Sale = require('../models/sale.model');
-const Product = require('../models/product.model');
-const { auth, authorize } = require('../middleware/auth.middleware');
+const Sale = require('../src/models/sale.model');
+const Product = require('../src/models/product.model');
+const { auth, authorize } = require('../src/middleware/auth.middleware');
 
 // Obtener todas las ventas (solo SuperUser y Admin)
 router.get('/', auth, authorize('SuperUser', 'Admin'), async (req, res) => {

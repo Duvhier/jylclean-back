@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../models/user.model');
-const { auth, authorize } = require('../middleware/auth.middleware');
+const User = require('../src/models/user.model');
+const { auth, authorize } = require('../src/middleware/auth.middleware');
 
 // Obtener todos los usuarios (solo SuperUser)
 router.get('/', auth, authorize('SuperUser'), async (req, res) => {
